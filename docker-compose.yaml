@@ -1,0 +1,70 @@
+version: "3.6"
+
+services:
+  heyling_rabbit:
+    image: rabbitmq:latest
+    container_name: heyling_rabbit
+    networks:
+      - heyling-network
+
+  heyling_rabbit_server:
+    image: heyling:rabbit
+    container_name: heyling_rabbit_server
+    build:
+      context: ${PROJ_PATH}
+      dockerfile: docker_rabbit
+    restart: on-failure
+    volumes:
+      - ${PROJ_PATH}:/app
+    networks:
+      - heyling-network
+    depends_on:
+      - heyling_rabbit
+    command: python rabbit-server.py
+
+  heyling_websocket:
+    image: heyling:websocket
+    container_name: heyling_websocket
+    build:
+      context: ${PROJ_PATH}
+      dockerfile: docker_websocket
+    restart: on-failure
+    volumes:
+      - ${PROJ_PATH}:/app
+    networks:
+      - heyling-network
+    ports:
+      - 8765:8765
+    depends_on:
+      - heyling_rabbit
+      - heyling_rabbit_server
+    command: python listen_results.py
+
+  heyling_flask:
+    image: heyling:flask
+    container_name: heyling_flask
+    build:
+      context: ${PROJ_PATH}
+      dockerfile: docker_flask
+    environment:
+      - FLASK_APP=queue_reverse_text.py
+    volumes:
+      - ${PROJ_PATH}:/app
+    networks:
+      - heyling-network
+    depends_on:
+      - heyling_rabbit
+      - heyling_websocket
+      - heyling_rabbit_server
+    ports:
+      - 5000:5000
+    command: flask run --port=5000 --host=heyling_flask
+
+
+networks:
+  heyling-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_ADDRESS}
